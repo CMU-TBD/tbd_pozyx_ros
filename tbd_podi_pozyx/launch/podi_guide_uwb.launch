@@ -1,0 +1,11 @@
+<launch>
+
+<arg name = "robot_name"    default = "podi"/>
+
+<node name="uwb_odom" pkg = "tbd_podi_pozyx" type = "uwb_odom.py" output = "screen">
+    <rosparam file="$(find tbd_podi_pozyx)/config/podi_guide_config.yaml" command = "load" ns = "" />
+    <!-- <param name="" value="" /> -->
+    <!-- <remap from="" to="" /> -->
+</node>
+
+</launch>

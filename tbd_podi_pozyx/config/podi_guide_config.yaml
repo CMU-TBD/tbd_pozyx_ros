@@ -1,0 +1,10 @@
+anchors: [{id: 0x1146, loc: [0, 0, 0]},
+          {id: 0x0002, loc: [0, 0, 0]},
+          {id: 0x0003, loc: [0, 0, 0]},
+          {id: 0x0004, loc: [0, 0, 0]},
+          {id: 0x0005, loc: [0, 0, 0]}] # ID of each anchor, plus (x, y, z) in mm
+tag_loc: [0, 0, 0, 0, 0, 0] # (x, y, z, r, p, y) in base_link frame)
+use_pozyx_tracking: False # if True, uses Pozyx's on-board tracking algorithm; otherwise, estimates from UWB only
+range_protocol: 'precision' # 'precision' or 'fast'; 'fast' might not work w/o changing UWB preamble settings
+position_filter: 'none' # 'none', 'low-pass', 'average', or 'median'
+position_filter_strength: 0 # integer from 0 to 15, w/ 15 = more filtering
