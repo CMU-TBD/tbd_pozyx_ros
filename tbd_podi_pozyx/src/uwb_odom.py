@@ -4,6 +4,7 @@ import sys
 import rospy
 import pypozyx
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import Imu
@@ -14,8 +15,10 @@ from sensor_msgs.msg import Imu
 # for gyroscope, acceleration, and magnetometer, tag must be calibrated every time the tag is plugged back in
 
 class uwbOdom:
-    def __init__(self):
+    def __init__(self, base_frame = "uwb", robot_name = "robot"):
         self.name = rospy.get_name()
+        self.base_frame = base_frame
+        self.robot_ns = robot_name
         self.tag_ready = False
         self.anchors_added = False
         self.anchors_ready = False
@@ -44,16 +47,49 @@ class uwbOdom:
         self.tag = None
         self.position = pypozyx.Coordinates()
         self.quat = pypozyx.Quaternion()
-        self.cov = [pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), 
-                    pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2)]
-        self.cov_registers = [pypozyx.PozyxRegisters.POSITIONING_ERROR_X, pypozyx.PozyxRegisters.POSITIONING_ERROR_Y, pypozyx.PozyxRegisters.POSITIONING_ERROR_Z,
-                              pypozyx.PozyxRegisters.POSITIONING_ERROR_XY, pypozyx.PozyxRegisters.POSITIONING_ERROR_XZ, pypozyx.PozyxRegisters.POSITIONING_ERROR_YZ]
+
+        if(rospy.get_param(self.name + '/use_pozyx_tracking')):
+            self.pos_orient_cov = np.array([[ 6.40902840e-05, -8.85211920e-05, -4.62694880e-05,-1.47375241e-31, -8.35896737e-30, -2.83074847e-28],
+                                            [-8.85211920e-05,  3.62656496e-04,  2.37780344e-04, 4.11625155e-32,  2.33483106e-30,  7.93720288e-29],
+                                            [-4.62694880e-05,  2.37780344e-04,  2.16460416e-04, 1.57174372e-31,  8.90939506e-30,  3.02020131e-28],
+                                            [-1.47375241e-31,  4.11625155e-32,  1.57174372e-31, 4.33334237e-34,  2.45556068e-32,  8.32001736e-31],
+                                            [-8.35896737e-30,  2.33483106e-30,  8.90939506e-30, 2.45556068e-32,  1.39148438e-30,  4.71467650e-29],
+                                            [-2.83074847e-28,  7.93720288e-29,  3.02020131e-28, 8.32001736e-31,  4.71467650e-29,  1.59744333e-27]])
+        
+            self.ang_vel_cov = np.array([[ 3.06564580e-04, -3.60517451e-07,  6.62400035e-07],
+                                         [-3.60517451e-07,  1.54048534e-04, -9.18114853e-07],
+                                         [ 6.62400035e-07, -9.18114853e-07,  2.28925934e-04]])
+
+            self.accel_cov = np.array([[ 4.06176808e-04, -2.06157240e-05, -2.06881937e-05],
+                                       [-2.06157240e-05,  1.60101437e-04, -3.34098952e-06],
+                                       [-2.06881937e-05, -3.34098952e-06,  2.39190662e-04]])
+
+        else:
+            self.pos_orient_cov = np.array([[ 9.77488560e-03, -2.25701945e-02,  3.11398920e-02, 8.18443189e-32,  3.41971202e-31, -1.45150407e-31],
+                                            [-2.25701945e-02,  2.41238051e-01, -9.12996809e-02, 1.08073944e-31,  4.49650716e-31, -2.02737253e-31],
+                                            [ 3.11398920e-02, -9.12996809e-02,  1.79017093e-01, 1.45347622e-31,  6.04267453e-31, -2.70973721e-31],
+                                            [ 8.18443189e-32,  1.08073944e-31,  1.45347622e-31, 6.77084746e-32,  2.81667254e-31, -1.26389153e-31],
+                                            [ 3.41971202e-31,  4.49650716e-31,  6.04267453e-31, 2.81667254e-31,  1.17173578e-30, -5.25778875e-31],
+                                            [-1.45150407e-31, -2.02737253e-31, -2.70973721e-31, -1.26389153e-31, -5.25778875e-31,  2.35926418e-31]])
+
+            self.ang_vel_cov = np.array([[ 1.53979549e-04, -1.21735426e-06,  1.27300748e-06],
+                                         [-1.21735426e-06,  2.86414821e-06,  1.01729911e-06],
+                                         [ 1.27300748e-06,  1.01729911e-06,  7.73233975e-05]])
+            
+            self.accel_cov = np.array([[ 4.32463046e-04, -3.78754530e-05,  7.87761721e-06],
+                                       [-3.78754530e-05,  1.30642988e-04,  2.24079506e-06],
+                                       [ 7.87761721e-06,  2.24079506e-06,  2.88763802e-04]])
+
+        #self.cov = [pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), 
+        #            pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2), pypozyx.SingleRegister(size = 2)]
+        #self.cov_registers = [pypozyx.PozyxRegisters.POSITIONING_ERROR_X, pypozyx.PozyxRegisters.POSITIONING_ERROR_Y, pypozyx.PozyxRegisters.POSITIONING_ERROR_Z,
+        #                      pypozyx.PozyxRegisters.POSITIONING_ERROR_XY, pypozyx.PozyxRegisters.POSITIONING_ERROR_XZ, pypozyx.PozyxRegisters.POSITIONING_ERROR_YZ]
 
         self.ang_vel = pypozyx.AngularVelocity()
         self.accel = pypozyx.Acceleration()
 
-        self.posePub = rospy.Publisher('/uwb/odom', PoseWithCovarianceStamped, queue_size=10)
-        self.imuPub = rospy.Publisher('/uwb/imu', Imu, queue_size=10)
+        self.posePub = rospy.Publisher(self.robot_ns + '/uwb/odom', PoseWithCovarianceStamped, queue_size=10)
+        self.imuPub = rospy.Publisher(self.robot_ns + '/uwb/imu', Imu, queue_size=10)
 
     def connectTag(self):
         # open connection
@@ -137,14 +173,16 @@ class uwbOdom:
             else:
                 bad_status_msg += 'Anchor ' + hex(anchor.network_id) + ' is turned off or out of range.\n'
 
-        rospy.loginfo_throttle(5, good_status_msg)
-        rospy.logwarn_throttle(5, bad_status_msg)
+        if(len(good_status_msg)):
+            rospy.loginfo_throttle(5, good_status_msg)
+        if(len(bad_status_msg)):
+            rospy.logwarn_throttle(5, bad_status_msg)
 
         if(status_all < 4):
             rospy.logwarn_throttle(5, 'Not enough anchors in range for 3D positioning (' + str(status_all) + '/4).')
             self.anchors_ready = False
         else:
-            rospy.loginfo_throttle(60, status_all + ' anchors are in range.')
+            rospy.loginfo_throttle(5, str(status_all) + ' anchors are in range.')
             self.anchors_ready = True
 
     def calibrateTag(self):
@@ -179,28 +217,32 @@ class uwbOdom:
 
         pos_success = self.tag.doPositioning(self.position)
         rot_success = self.tag.getNormalizedQuaternion(self.quat)
-        cov_success = 1
-        for register, dat in zip(self.cov_registers, self.cov):
-            cov_success &= self.tag.regRead(register, dat)
-        cov_matrix = np.array([[self.cov[0][0]/(1000**2), self.cov[3][0]/(1000**2), self.cov[4][0]/(1000**2), 0, 0, 0],
-                               [self.cov[3][0]/(1000**2), self.cov[1][0]/(1000**2), self.cov[5][0]/(1000**2), 0, 0, 0],
-                               [self.cov[4][0]/(1000**2), self.cov[5][0]/(1000**2), self.cov[2][0]/(1000**2), 0, 0, 0],
-                               [0, 0, 0, 0, 0, 0],
-                               [0, 0, 0, 0, 0, 0],
-                               [0, 0, 0, 0, 0, 0]])
 
-        if((pos_success & rot_success) & cov_success):
+        # although there's a set of registers for covariance, it's not actually reported
+        # cov_success = 1
+        # for register, dat in zip(self.cov_registers, self.cov):
+        #     cov_success &= self.tag.regRead(register, dat)
+        # cov_matrix = np.array([[self.cov[0][0]/(1000**2), self.cov[3][0]/(1000**2), self.cov[4][0]/(1000**2), 0, 0, 0],
+        #                        [self.cov[3][0]/(1000**2), self.cov[1][0]/(1000**2), self.cov[5][0]/(1000**2), 0, 0, 0],
+        #                        [self.cov[4][0]/(1000**2), self.cov[5][0]/(1000**2), self.cov[2][0]/(1000**2), 0, 0, 0],
+        #                        [0, 0, 0, 0, 0, 0],
+        #                        [0, 0, 0, 0, 0, 0],
+        #                        [0, 0, 0, 0, 0, 0]])
+
+        cov_matrix = np.diag([.1, .1, .1, .1, .1, .1])
+
+        if((pos_success & rot_success)):
             msgPos = PoseWithCovarianceStamped()
             msgPos.header.stamp = rospy.Time.now()
-            msgPos.header.frame_id = 'odom' # TODO fix
+            msgPos.header.frame_id = self.base_frame
 
-            msgPos.position.x = self.position.x/1000
-            msgPos.position.y = self.position.y/1000
-            msgPos.position.z = self.position.z/1000
-            msgPos.orientation.x = self.quat.x
-            msgPos.orientation.y = self.quat.y
-            msgPos.orientation.z = self.quat.z
-            msgPos.orientation.w = self.quat.w
+            msgPos.pose.pose.position.x = self.position.x/1000
+            msgPos.pose.pose.position.y = self.position.y/1000
+            msgPos.pose.pose.position.z = self.position.z/1000
+            msgPos.pose.pose.orientation.x = self.quat.x
+            msgPos.pose.pose.orientation.y = self.quat.y
+            msgPos.pose.pose.orientation.z = self.quat.z
+            msgPos.pose.pose.orientation.w = self.quat.w
             msgPos.pose.covariance = cov_matrix.flatten('C') #float64[36] row-major representation of 6x6 cov matrix
 
             self.posePub.publish(msgPos)
@@ -223,7 +265,7 @@ class uwbOdom:
         if((ang_success & accel_success)):
             msgIMU = Imu()
             msgIMU.header.stamp = rospy.Time.now()
-            msgIMU.header.frame_id = 'odom' # TODO fix
+            msgIMU.header.frame_id = self.base_frame
 
             msgIMU.orientation.x = 0 #self.quat.x
             msgIMU.orientation.y = 0 #self.quat.y
@@ -243,31 +285,62 @@ class uwbOdom:
 
             self.imuPub.publish(msgIMU)
 
-    def calibrate_variance(self):
-        return
+    def calibrate_variance(self): # rough estimate for variance of each, based on holding tag still
+        rospy.loginfo('Checking variances. Keep tag still.')
+        wait = input('Press Enter when ready to start.')
+
+        position_m = []
+        orientation_rpy = []
+        ang_vel_rad_s = []
+        accel_m_s2 = []
+
+        ii = 1000
+
+        while(((len(position_m) < ii) | (len(orientation_rpy) < ii)) | ((len(ang_vel_rad_s) < ii) | (len(accel_m_s2) < ii))):
+            pos_success = self.tag.doPositioning(self.position)
+            rot_success = self.tag.getNormalizedQuaternion(self.quat)
+            if((pos_success) & (rot_success)):
+                position_m.append([self.position.x/1000, self.position.y/1000, self.position.z/1000])
+                orientation_rpy.append(np.asarray(Rotation.from_quat([self.quat.x, self.quat.y, self.quat.z, self.quat.w]).as_euler('xyz')))
+            ang_success = self.tag.getAngularVelocity_dps(self.ang_vel)
+            if(ang_success):
+                ang_vel_rad_s.append([self.ang_vel.x*np.pi/180, self.ang_vel.y*np.pi/180, self.ang_vel.z*np.pi/180])
+            accel_success = self.tag.getAcceleration_mg(self.accel)
+            if(accel_success):
+                accel_m_s2.append([self.accel.x*(9.81/1000), self.accel.y*(9.81/1000), self.accel.z*(9.81/1000)])
+
+        rospy.loginfo('Done collecting.')
+
+        pos_orient = np.hstack((np.array(position_m), np.array(orientation_rpy)))
+        position_cov = np.cov(pos_orient.T, bias=True)
+        ang_vel_rad_s = np.array(ang_vel_rad_s)
+        ang_vel_cov = np.cov(ang_vel_rad_s.T, bias=True)
+        accel_m_s2 = np.array(accel_m_s2)
+        accel_cov = np.cov(accel_m_s2.T, bias=True)
+
+        #rospy.loginfo(pos_orient)
+        rospy.loginfo('Position & RPY: \n' + repr(position_cov))
+        rospy.loginfo('Angular Velocity: \n' + repr(ang_vel_cov))
+        rospy.loginfo('Acceleration: \n' + repr(accel_cov))
 
 if __name__ == '__main__':
     rospy.init_node('uwb_odom')
-
-    node = uwbOdom()
-    rate = rospy.Rate(10)
+    myargv = rospy.myargv(argv = sys.argv)
+    node = uwbOdom(myargv[1], myargv[2])
+    rate = rospy.Rate(50)            
 
     while not rospy.is_shutdown():
-        if(not node.tag_ready):
+        if(node.anchors_ready):
+            if(not rospy.get_param(rospy.get_name() + '/cov_check')):
+                node.publishUWB()
+            else:
+                node.calibrate_variance()
+                break
+        elif(not node.tag_ready):
             node.connectTag()
         elif(not node.anchors_added):
             node.connectAnchors()
         else:
             node.checkAnchorStatus()
-            node.publishUWB()
-
-        # if(node.anchors_ready):
-        #     node.publishUWB()
-        # elif(not node.tag_ready):
-        #     node.connectTag()
-        # elif(not node.anchors_added):
-        #     node.connectAnchors()
-        # else:
-        #     node.checkAnchorStatus()
 
         rate.sleep()
