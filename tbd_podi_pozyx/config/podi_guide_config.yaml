@@ -1,8 +1,9 @@
-anchors: [{id: 0x127d, loc: [-247, 186, 1530]},
-          {id: 0x1146, loc: [383, 9345, 831]},
-          {id: 0x1169, loc: [-601, 18986, 1699]},
-          {id: 0x123c, loc: [8155, 19139, 828]},
-          {id: 0x1232, loc: [8508, 147, 1840]}] # ID of each anchor, plus (x, y, z) in mm
+anchors: [{id: 0x127d, loc: [-251, 187, 1530]},
+          {id: 0x1146, loc: [384, 9364, 831]},
+          {id: 0x1169, loc: [197, 19355, 1699]},
+          {id: 0x123c, loc: [8176, 19135, 828]},
+          {id: 0x1232, loc: [8640, 198, 1840]}]
+          # ID of each anchor, plus (x, y, z) in mm
 tag_loc: [0, 0, 0, 0, 0, 0] # (x, y, z, r, p, y) in base_link frame)
 use_pozyx_tracking: True # if True, uses Pozyx's on-board tracking algorithm; otherwise, estimates from UWB only
 range_protocol: 'precision' # 'precision' or 'fast'; 'fast' might not work w/o changing UWB preamble settings
