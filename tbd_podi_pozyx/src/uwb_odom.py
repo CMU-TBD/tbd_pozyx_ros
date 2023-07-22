@@ -88,7 +88,7 @@ class uwbOdom:
         self.ang_vel = pypozyx.AngularVelocity()
         self.accel = pypozyx.Acceleration()
 
-        self.posePub = rospy.Publisher(self.robot_ns + '/uwb/odom', PoseWithCovarianceStamped, queue_size=10)
+        self.posePub = rospy.Publisher(self.robot_ns + '/uwb/pose', PoseWithCovarianceStamped, queue_size=10)
         self.imuPub = rospy.Publisher(self.robot_ns + '/uwb/imu', Imu, queue_size=10)
 
     def connectTag(self):
@@ -212,24 +212,14 @@ class uwbOdom:
         #       Header
         #       pose [position (x, y, z), orientation (x, y, z, w)]
         #       covariance (row-major 6x6 covariance as [x, y, z, r, p, y])
-        # uses x, y, z; err_x, err_y, err_z; err xy, err xz, err yz; quat_x, quat_y, quat_z, quat_w (no cov known)
+        # uses x, y, z; quat_x, quat_y, quat_z, quat_w
         # converts from mm to m; mm^2 to m^2
+        # although there's a set of registers for covariance, it's not actually reported
 
         pos_success = self.tag.doPositioning(self.position)
         rot_success = self.tag.getNormalizedQuaternion(self.quat)
 
-        # although there's a set of registers for covariance, it's not actually reported
-        # cov_success = 1
-        # for register, dat in zip(self.cov_registers, self.cov):
-        #     cov_success &= self.tag.regRead(register, dat)
-        # cov_matrix = np.array([[self.cov[0][0]/(1000**2), self.cov[3][0]/(1000**2), self.cov[4][0]/(1000**2), 0, 0, 0],
-        #                        [self.cov[3][0]/(1000**2), self.cov[1][0]/(1000**2), self.cov[5][0]/(1000**2), 0, 0, 0],
-        #                        [self.cov[4][0]/(1000**2), self.cov[5][0]/(1000**2), self.cov[2][0]/(1000**2), 0, 0, 0],
-        #                        [0, 0, 0, 0, 0, 0],
-        #                        [0, 0, 0, 0, 0, 0],
-        #                        [0, 0, 0, 0, 0, 0]])
-
-        cov_matrix = np.diag([.1, .1, .1, .1, .1, .1])
+        cov_matrix = self.pos_orient_cov #np.diag([.1, .1, .1, .1, .1, .1])
 
         if((pos_success & rot_success)):
             msgPos = PoseWithCovarianceStamped()
@@ -256,7 +246,6 @@ class uwbOdom:
         #       linear_acceleration (x_dd, y_dd, z_dd)
         #       linear_acceleration_covariance (row-major 3x3 covariance as (r, p, y))
         # uses gyro_x, gyro_y, gyro_z (no cov known); lia_x, lia_y, lia_z (no cov known)
-        # because orientation is already included in the pose message, we set covariances to -1 
         # converts from degrees/sec to rad/sec; milli-g to m/s^2
 
         ang_success = self.tag.getAngularVelocity_dps(self.ang_vel)
@@ -267,21 +256,21 @@ class uwbOdom:
             msgIMU.header.stamp = rospy.Time.now()
             msgIMU.header.frame_id = self.base_frame
 
-            msgIMU.orientation.x = 0 #self.quat.x
-            msgIMU.orientation.y = 0 #self.quat.y
-            msgIMU.orientation.z = 0 #self.quat.z
-            msgIMU.orientation.w = 0 #self.quat.w
-            msgIMU.orientation_covariance = np.diag([-1, 0, 0]).flatten('C')
+            msgIMU.orientation.x = self.quat.x
+            msgIMU.orientation.y = self.quat.y
+            msgIMU.orientation.z = self.quat.z
+            msgIMU.orientation.w = self.quat.w
+            msgIMU.orientation_covariance = cov_matrix[3:,3:].flatten('C')
 
             msgIMU.angular_velocity.x = self.ang_vel.x*np.pi/180
             msgIMU.angular_velocity.y = self.ang_vel.y*np.pi/180
             msgIMU.angular_velocity.z = self.ang_vel.z*np.pi/180
-            msgIMU.angular_velocity_covariance = np.diag([0.1, 0.1, 0.1]).flatten('C')
+            msgIMU.angular_velocity_covariance = self.ang_vel_cov.flatten('C') #np.diag([0.1, 0.1, 0.1]).flatten('C')
 
             msgIMU.linear_acceleration.x = self.accel.x*(9.81/1000)
             msgIMU.linear_acceleration.y = self.accel.y*(9.81/1000)
             msgIMU.linear_acceleration.z = self.accel.z*(9.81/1000)
-            msgIMU.linear_acceleration_covariance = np.diag([0.1, 0.1, 0.1]).flatten('C')
+            msgIMU.linear_acceleration_covariance = self.accel_cov.flatten('C') #np.diag([0.1, 0.1, 0.1]).flatten('C')
 
             self.imuPub.publish(msgIMU)
 
